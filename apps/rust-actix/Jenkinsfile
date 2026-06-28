@@ -33,7 +33,7 @@ spec:
         REGISTRY       = 'fmaulana24/devsecops'
         IMG_LATEST     = "${REGISTRY}:${APP_NAME}"
         IMG_BUILD      = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
-        SONAR_HOST_URL = 'http://sonarqube.sonarqube.svc.cluster.local:9000'
+        SONAR_HOST_URL = 'http://sonarqube-sonarqube.sonarqube.svc.cluster.local:9000'
     }
 
     stages {
