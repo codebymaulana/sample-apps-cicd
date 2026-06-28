@@ -59,7 +59,7 @@ spec:
                     dir('apps/node-express') {
                         sh "buildah build -t ${IMG_LATEST} -t ${IMG_BUILD} ."
                     }
-                    sh "buildah push ${IMG_LATEST} oci-archive:image.tar"
+                    sh "buildah push ${IMG_LATEST} docker-archive:image.tar"
                 }
             }
         }
