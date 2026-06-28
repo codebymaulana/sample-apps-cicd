@@ -10,24 +10,16 @@ spec:
     image: sonarsource/sonar-scanner-cli:5
     command: [cat]
     tty: true
-  - name: docker
-    image: docker:27-cli
+  - name: buildah
+    image: quay.io/buildah/stable
     command: [cat]
     tty: true
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+    securityContext:
+      privileged: true
   - name: trivy
     image: aquasec/trivy:0.57.0
     command: [cat]
     tty: true
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
-  volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
 '''
         }
     }
@@ -58,12 +50,13 @@ spec:
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Image') {
             steps {
-                container('docker') {
+                container('buildah') {
                     dir('apps/node-express') {
-                        sh "docker build -t ${IMG_LATEST} -t ${IMG_BUILD} ."
+                        sh "buildah build -t ${IMG_LATEST} -t ${IMG_BUILD} ."
                     }
+                    sh "buildah push ${IMG_LATEST} oci-archive:image.tar"
                 }
             }
         }
@@ -79,7 +72,7 @@ spec:
                           --ignore-unfixed \
                           --format table \
                           --output trivy-report.txt \
-                          ${IMG_LATEST}
+                          --input image.tar
                     """
                 }
             }
@@ -92,15 +85,15 @@ spec:
 
         stage('Push to Docker Hub') {
             steps {
-                container('docker') {
+                container('buildah') {
                     withCredentials([usernamePassword(
                         credentialsId: 'dockerhub-credentials',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-                        sh "docker push ${IMG_LATEST}"
-                        sh "docker push ${IMG_BUILD}"
+                        sh 'buildah login -u "$DOCKER_USER" -p "$DOCKER_PASS" docker.io'
+                        sh "buildah push ${IMG_LATEST} docker://docker.io/${IMG_LATEST}"
+                        sh "buildah push ${IMG_BUILD} docker://docker.io/${IMG_BUILD}"
                     }
                 }
             }
@@ -109,8 +102,8 @@ spec:
 
     post {
         always {
-            container('docker') {
-                sh "docker rmi ${IMG_LATEST} ${IMG_BUILD} || true"
+            container('buildah') {
+                sh "buildah rmi ${IMG_LATEST} ${IMG_BUILD} || true"
             }
         }
     }
