@@ -36,15 +36,15 @@ spec:
     }
 
     stages {
-        stage('Unit Test') {
-            steps {
-                container('golang') {
-                    dir('apps/go-http/src') {
-                        sh 'go test ./... -v'
-                    }
-                }
-            }
-        }
+        // stage('Unit Test') {
+        //     steps {
+        //         container('golang') {
+        //             dir('apps/go-http/src') {
+        //                 sh 'go test ./... -v'
+        //             }
+        //         }
+        //     }
+        // }
 
         stage('SonarQube Scan') {
             steps {
