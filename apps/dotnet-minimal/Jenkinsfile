@@ -25,17 +25,18 @@ spec:
     }
 
     environment {
-        APP_NAME   = 'dotnet-minimal'
-        REGISTRY   = 'fmaulana24/devsecops'
-        IMG_LATEST = "${REGISTRY}:${APP_NAME}"
-        IMG_BUILD  = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+        APP_NAME       = 'dotnet-minimal'
+        REGISTRY       = 'fmaulana24/devsecops'
+        IMG_LATEST     = "${REGISTRY}:${APP_NAME}"
+        IMG_BUILD      = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+        SONAR_HOST_URL = 'http://sonarqube.sonarqube.svc.cluster.local:9000'
     }
 
     stages {
         stage('SonarQube Scan') {
             steps {
                 container('dotnet') {
-                    withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                         dir('apps/dotnet-minimal/src') {
                             sh """
                                 dotnet tool install --global dotnet-sonarscanner --version 8.0.3
@@ -44,13 +45,13 @@ spec:
                                 dotnet sonarscanner begin \
                                   /k:"${APP_NAME}" \
                                   /n:"${APP_NAME}" \
-                                  /d:sonar.host.url="\${SONAR_HOST_URL}" \
-                                  /d:sonar.token="\${SONAR_AUTH_TOKEN}"
+                                  /d:sonar.host.url="${SONAR_HOST_URL}" \
+                                  /d:sonar.token="\${SONAR_TOKEN}"
 
                                 dotnet build
 
                                 dotnet sonarscanner end \
-                                  /d:sonar.token="\${SONAR_AUTH_TOKEN}"
+                                  /d:sonar.token="\${SONAR_TOKEN}"
                             """
                         }
                     }

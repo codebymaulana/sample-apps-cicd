@@ -25,10 +25,11 @@ spec:
     }
 
     environment {
-        APP_NAME   = 'java-spring'
-        REGISTRY   = 'fmaulana24/devsecops'
-        IMG_LATEST = "${REGISTRY}:${APP_NAME}"
-        IMG_BUILD  = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+        APP_NAME       = 'java-spring'
+        REGISTRY       = 'fmaulana24/devsecops'
+        IMG_LATEST     = "${REGISTRY}:${APP_NAME}"
+        IMG_BUILD      = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+        SONAR_HOST_URL = 'http://sonarqube.sonarqube.svc.cluster.local:9000'
     }
 
     stages {
@@ -51,10 +52,12 @@ spec:
         stage('SonarQube Scan') {
             steps {
                 container('maven') {
-                    withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                         dir('apps/java-spring/src') {
                             sh """
                                 mvn sonar:sonar \
+                                  -Dsonar.host.url=${SONAR_HOST_URL} \
+                                  -Dsonar.token=${SONAR_TOKEN} \
                                   -Dsonar.projectKey=${APP_NAME} \
                                   -Dsonar.projectName=${APP_NAME} \
                                   -q

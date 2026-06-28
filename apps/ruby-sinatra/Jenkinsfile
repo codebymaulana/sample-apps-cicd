@@ -25,20 +25,23 @@ spec:
     }
 
     environment {
-        APP_NAME   = 'ruby-sinatra'
-        REGISTRY   = 'fmaulana24/devsecops'
-        IMG_LATEST = "${REGISTRY}:${APP_NAME}"
-        IMG_BUILD  = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+        APP_NAME       = 'ruby-sinatra'
+        REGISTRY       = 'fmaulana24/devsecops'
+        IMG_LATEST     = "${REGISTRY}:${APP_NAME}"
+        IMG_BUILD      = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+        SONAR_HOST_URL = 'http://sonarqube.sonarqube.svc.cluster.local:9000'
     }
 
     stages {
         stage('SonarQube Scan') {
             steps {
                 container('sonar-scanner') {
-                    withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                         dir('apps/ruby-sinatra') {
                             sh """
                                 sonar-scanner \
+                                  -Dsonar.host.url=${SONAR_HOST_URL} \
+                                  -Dsonar.token=${SONAR_TOKEN} \
                                   -Dsonar.projectKey=${APP_NAME} \
                                   -Dsonar.projectName=${APP_NAME} \
                                   -Dsonar.sources=src \
