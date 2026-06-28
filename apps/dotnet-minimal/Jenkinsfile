@@ -1,0 +1,125 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: dotnet
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    command: [cat]
+    tty: true
+  - name: docker
+    image: docker:27-cli
+    command: [cat]
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: trivy
+    image: aquasec/trivy:0.57.0
+    command: [cat]
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+'''
+        }
+    }
+
+    environment {
+        APP_NAME   = 'dotnet-minimal'
+        REGISTRY   = 'fmaulana24/devsecops'
+        IMG_LATEST = "${REGISTRY}:${APP_NAME}"
+        IMG_BUILD  = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('SonarQube Scan') {
+            steps {
+                container('dotnet') {
+                    withSonarQubeEnv('SonarQube') {
+                        dir('apps/dotnet-minimal/src') {
+                            sh """
+                                dotnet tool install --global dotnet-sonarscanner --version 8.0.3
+                                export PATH="\$PATH:/root/.dotnet/tools"
+
+                                dotnet sonarscanner begin \
+                                  /k:"${APP_NAME}" \
+                                  /n:"${APP_NAME}" \
+                                  /d:sonar.host.url="\${SONAR_HOST_URL}" \
+                                  /d:sonar.token="\${SONAR_AUTH_TOKEN}"
+
+                                dotnet build
+
+                                dotnet sonarscanner end \
+                                  /d:sonar.token="\${SONAR_AUTH_TOKEN}"
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                container('docker') {
+                    dir('apps/dotnet-minimal') {
+                        sh "docker build -t ${IMG_LATEST} -t ${IMG_BUILD} ."
+                    }
+                }
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                container('trivy') {
+                    sh """
+                        trivy image \
+                          --no-progress \
+                          --exit-code 1 \
+                          --severity HIGH,CRITICAL \
+                          --ignore-unfixed \
+                          --format table \
+                          --output trivy-report.txt \
+                          ${IMG_LATEST}
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                container('docker') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+                        sh "docker push ${IMG_LATEST}"
+                        sh "docker push ${IMG_BUILD}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            container('docker') {
+                sh "docker rmi ${IMG_LATEST} ${IMG_BUILD} || true"
+            }
+        }
+    }
+}

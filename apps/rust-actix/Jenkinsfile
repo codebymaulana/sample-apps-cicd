@@ -1,0 +1,130 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: rust
+    image: rust:slim
+    command: [cat]
+    tty: true
+  - name: sonar-scanner
+    image: sonarsource/sonar-scanner-cli:5
+    command: [cat]
+    tty: true
+  - name: docker
+    image: docker:27-cli
+    command: [cat]
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: trivy
+    image: aquasec/trivy:0.57.0
+    command: [cat]
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+'''
+        }
+    }
+
+    environment {
+        APP_NAME   = 'rust-actix'
+        REGISTRY   = 'fmaulana24/devsecops'
+        IMG_LATEST = "${REGISTRY}:${APP_NAME}"
+        IMG_BUILD  = "${REGISTRY}:${APP_NAME}-${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Unit Test') {
+            steps {
+                container('rust') {
+                    dir('apps/rust-actix/src') {
+                        sh 'cargo test 2>&1'
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                container('sonar-scanner') {
+                    withSonarQubeEnv('SonarQube') {
+                        dir('apps/rust-actix') {
+                            sh """
+                                sonar-scanner \
+                                  -Dsonar.projectKey=${APP_NAME} \
+                                  -Dsonar.projectName=${APP_NAME} \
+                                  -Dsonar.sources=src
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                container('docker') {
+                    dir('apps/rust-actix') {
+                        sh "docker build -t ${IMG_LATEST} -t ${IMG_BUILD} ."
+                    }
+                }
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                container('trivy') {
+                    sh """
+                        trivy image \
+                          --no-progress \
+                          --exit-code 1 \
+                          --severity HIGH,CRITICAL \
+                          --ignore-unfixed \
+                          --format table \
+                          --output trivy-report.txt \
+                          ${IMG_LATEST}
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                container('docker') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+                        sh "docker push ${IMG_LATEST}"
+                        sh "docker push ${IMG_BUILD}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            container('docker') {
+                sh "docker rmi ${IMG_LATEST} ${IMG_BUILD} || true"
+            }
+        }
+    }
+}

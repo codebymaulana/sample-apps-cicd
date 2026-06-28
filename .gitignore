@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Go
+vendor/
+
+# Java / Maven
+target/
+*.class
+
+# Ruby
+.bundle/
+vendor/bundle/
+
+# Rust
+apps/rust-actix/src/target/
+
+# .NET
+bin/
+obj/
+
+# Docker artifacts
+*.tar.gz
